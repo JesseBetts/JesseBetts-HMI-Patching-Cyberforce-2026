@@ -13,4 +13,4 @@ Invoke-WebRequest -UseBasicParsing `
   
 Unblock-File C:\Temp\Patch-HMI.ps1
 
-powershell -ExecutionPolicy Bypass -File C:\Temp\Patch-HMI.ps1 -ReportOnly
+powershell -ExecutionPolicy Bypass -File C:\Temp\Patch-HMI.ps1 #you can add "-ReportOnly" to the end to just see the report.
