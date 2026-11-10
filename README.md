@@ -4,9 +4,13 @@
 Here are the commands needed to run the script
 
 New-Item -ItemType Directory -Force C:\Temp | Out-Null
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 Invoke-WebRequest -UseBasicParsing `
   -Uri "https://raw.githubusercontent.com/JesseBetts/JesseBetts-HMI-Patching-Cyberforce-2026/main/Patch-HMI.ps1" `
   -OutFile C:\Temp\Patch-HMI.ps1
+  
 Unblock-File C:\Temp\Patch-HMI.ps1
+
 powershell -ExecutionPolicy Bypass -File C:\Temp\Patch-HMI.ps1 -ReportOnly
