@@ -1,0 +1,160 @@
+=====================================================================
+HMI PATCHING - QUICK INSTRUCTIONS
+Repo: https://github.com/JesseBetts/JesseBetts-HMI-Patching-Cyberforce-2026
+Target: Windows Server 2019 HMI (Chrome + Windows updates)
+=====================================================================
+
+BEFORE YOU START
+  - Take a VM snapshot / image backup first.
+  - Confirm your HMI/SCADA vendor supports the updates.
+  - Open PowerShell as Administrator (right-click > Run as administrator).
+  - Keep all six scripts in the SAME folder. They load each other.
+
+
+---------------------------------------------------------------------
+STEP 1: DOWNLOAD THE SCRIPTS
+---------------------------------------------------------------------
+
+[Optional] Fix TLS errors if the download fails:
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    -> Forces PowerShell to use TLS 1.2, which GitHub requires on old Windows.
+
+cd C:\Temp
+    -> Moves to the C:\Temp folder (create it first if it doesn't exist:
+       mkdir C:\Temp).
+
+Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/JesseBetts/JesseBetts-HMI-Patching-Cyberforce-2026/raw/refs/heads/main/HMI-Patch.zip" -OutFile C:\Temp\HMI-Patch.zip
+    -> Downloads HMI-Patch.zip from your GitHub repo to C:\Temp.
+
+Expand-Archive C:\Temp\HMI-Patch.zip -DestinationPath C:\Temp -Force
+    -> Unzips it. Creates the folder C:\Temp\HMI-Patch with the scripts.
+
+cd C:\Temp\HMI-Patch
+    -> Moves into the scripts folder. Run "dir" to confirm you see 6 files.
+
+
+---------------------------------------------------------------------
+STEP 2: ALLOW THE SCRIPTS TO RUN
+---------------------------------------------------------------------
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+    -> Lets scripts run in THIS PowerShell window only. Nothing permanent
+       is changed on the system.
+
+Get-ChildItem . -Filter *.ps1 | Unblock-File
+    -> Removes the "downloaded from the internet" block on each script so
+       Windows doesn't prompt or refuse to run them.
+
+
+---------------------------------------------------------------------
+STEP 3: RUN THE SCRIPTS (run from C:\Temp\HMI-Patch)
+---------------------------------------------------------------------
+
+01 - STATUS CHECK  (read-only, takes seconds, changes nothing)
+  .\01-Get-HMIStatus.ps1
+    -> Shows OS, build number, Chrome version, free disk space on C:, and
+       whether a reboot is pending. Run it before and after patching.
+
+02 - CHROME UPDATE  (about 1-3 minutes)
+  .\02-Update-Chrome.ps1
+    -> Downloads and installs Google's enterprise Chrome MSI. Fixes the
+       Chrome findings. If Chrome is open, restart it to load the new version.
+
+  .\02-Update-Chrome.ps1 -OfflinePath D:\patches
+    -> Same, but uses a *chrome*.msi file from that folder (for HMIs
+       with no internet).
+
+03 - WINDOWS UPDATES  (SLOW: 30-90 minutes)
+  .\03-Update-Windows.ps1 -ListOnly
+    -> Lists pending updates only. Installs nothing. Good for a quick look.
+
+  .\03-Update-Windows.ps1
+    -> Installs all pending Windows updates (except drivers) using the
+       PSWindowsUpdate module. Does NOT reboot by itself.
+
+  .\03-Update-Windows.ps1 -OfflinePath D:\patches
+    -> Installs .msu files from that folder in file-name order. Name them
+       so the servicing stack update goes first (01-ssu.msu, 02-cu.msu).
+       Usually faster than online mode.
+
+04 - FINISH / REBOOT CHECK  (seconds)
+  .\04-Finish-HMI.ps1
+    -> Shows the after-state (build, Chrome version) and tells you if a
+       reboot is required.
+
+  .\04-Finish-HMI.ps1 -AutoReboot
+    -> Same, but reboots the server in 60 seconds if a reboot is needed.
+       Cancel with:  shutdown /a
+
+MASTER SCRIPT - RUNS THE STEPS FOR YOU
+  .\Invoke-HMIPatch.ps1
+    -> Runs everything in order: Status > Chrome > Windows > Finish.
+       (Chrome goes before Windows so the quick win is done first.)
+
+  .\Invoke-HMIPatch.ps1 -ReportOnly
+    -> Dry run. Shows status only and changes nothing.
+
+  .\Invoke-HMIPatch.ps1 -Steps Chrome
+    -> Runs ONLY the steps you list. Options: Status, Chrome, Windows,
+       Finish. Combine with commas.
+
+  .\Invoke-HMIPatch.ps1 -Steps Status,Chrome,Finish
+    -> Fast run: skips the slow Windows step (good during the hackathon).
+
+  .\Invoke-HMIPatch.ps1 -Steps Windows,Finish -AutoReboot
+    -> Run the slow Windows step later, then reboot automatically.
+
+  .\Invoke-HMIPatch.ps1 -SkipWindows
+  .\Invoke-HMIPatch.ps1 -SkipChrome
+    -> Run everything except that one part.
+
+  .\Invoke-HMIPatch.ps1 -OfflinePath D:\patches -AutoReboot
+    -> Full run from local files, then reboot if needed.
+
+HMI-Common.ps1
+    -> Shared helper functions. Never run it directly. The other scripts
+       load it automatically.
+
+
+---------------------------------------------------------------------
+RECOMMENDED ORDER FOR THE HACKATHON
+---------------------------------------------------------------------
+  1. .\01-Get-HMIStatus.ps1                      (note the starting build)
+  2. .\02-Update-Chrome.ps1                      (quick, ~2 min)
+  3. .\03-Update-Windows.ps1                     (run when you have time)
+  4. .\04-Finish-HMI.ps1 -AutoReboot             (reboot)
+  5. .\01-Get-HMIStatus.ps1                      (confirm new build)
+  6. Rescan to confirm findings cleared.
+
+  Note: Windows findings will NOT clear until after the reboot.
+
+
+---------------------------------------------------------------------
+PARAMETER REFERENCE
+---------------------------------------------------------------------
+  -OfflinePath <folder>   Use local .msu / .msi files instead of downloading
+  -ListOnly               (03 only) List pending updates, install nothing
+  -AutoReboot             (04 and master) Reboot in 60 s if required
+  -ReportOnly             (master) Status only, no changes
+  -Steps a,b,c            (master) Status, Chrome, Windows, Finish
+  -SkipWindows            (master) Skip Windows updates
+  -SkipChrome             (master) Skip Chrome update
+  -LogDir <folder>        Where logs go (default C:\Temp\HMI-Patch)
+
+
+---------------------------------------------------------------------
+LOGS AND TROUBLESHOOTING
+---------------------------------------------------------------------
+  - Logs are saved in C:\Temp\HMI-Patch (one .log file per run).
+  - "Running scripts is disabled": re-run the Set-ExecutionPolicy command
+    from Step 2 in the same window.
+  - "Run this script from an elevated PowerShell": reopen PowerShell as
+    Administrator.
+  - "No internet access": use -OfflinePath with staged .msu / .msi files.
+  - Download fails with TLS/SSL error: run the Tls12 line from Step 1.
+  - Less than 10 GB free on C: warning: free up space before running 03.
+  - Reboot already pending warning: reboot first, then re-run.
+  - Chrome version didn't change in the window: close and reopen Chrome.
+  - Exit codes treated as success: 0 (ok), 3010 (ok, reboot needed),
+    2359302 (already installed).
+=====================================================================
